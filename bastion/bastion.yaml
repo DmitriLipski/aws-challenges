@@ -1,0 +1,138 @@
+# Author: Dmitri Lipski, Software Developer
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    Description: Enter instance type, for example -  t2.micro, m1.small, m1.large, etc. Default is t2.micro.
+  KaypairName:
+    Type: String
+    Default: cfm
+    Description: Kaypair name to log in to your instance via ssh. Default is cfm.
+  SubnetsIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMALINUX: ami-00eb20669e0990cb4
+    us-east-2:
+      AMALINUX: ami-0c64dd618a49aeee8
+    us-west-1:
+      AMALINUX: ami-0bce08e823ed38bdd
+    us-west-2:
+      AMALINUX: ami-08d489468314a58df
+    sa-east-1:
+      AMALINUX: ami-0e2c2c29d8017dd99
+    ca-central-1:
+      AMALINUX: ami-04070f04f450607dc
+    eu-west-1:
+      AMALINUX: ami-028188d9b49b32a80
+    eu-west-2:
+      AMALINUX: ami-04de2b60dd25fbb2e
+    eu-west-3:
+      AMALINUX: ami-0652eb0db9b20aeaf
+    eu-central-1:
+      AMALINUX: ami-010fae13a16763bb4
+    ap-southeast-1:
+      AMALINUX: ami-05c859630889c79c8
+    ap-southeast-2:
+      AMALINUX: ami-07cc15c3ba6f8e287
+    ap-northeast-1:
+      AMALINUX: ami-0ab3e16f9c414dee7
+    ap-northeast-2:
+      AMALINUX: ami-0e1e385b0a934254a
+    ap-south-1:
+      AMALINUX: ami-02913db388613c3e1
+
+Resources:
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Tags:
+        -
+          Key: "name"
+          Value: "BastionHost-ElasticIP"
+
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+      Tags:
+        - Key: "name"
+          Value: "BastionHost-SSHSecurityGroup"
+
+  AutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MaxSize: "1"
+      MinSize: "1"
+      VPCZoneIdentifier: !Ref SubnetsIds
+      Tags:
+        - Key: "name"
+          PropagateAtLaunch: "true"
+          Value: "BastionHost-ASG"
+
+  LaunchConfiguration:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KaypairName
+      SecurityGroups:
+        - !GetAtt SSHSecurityGroup.GroupId
+      IamInstanceProfile: !Ref AssociateAddressInstanceProfile
+      UserData:
+        "Fn::Base64": !Sub
+          - |
+            #!/bin/bash
+            ALLOCATION_ID=${allocation_Id}
+            instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+            aws ec2 associate-address --instance-id $instance_id --allocation-id $ALLOCATION_ID --region ${AWS::Region}
+          - allocation_Id: !Join ["", [!GetAtt MyEIP.AllocationId ] ]
+
+  AssociateAddressInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref IAMRole
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Tags:
+        - Key: "name"
+          Value: "BastionHost-EC2InstanceRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+  Policy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: ec2AssociateAddressPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - "ec2:AssociateAddress"
+            Resource: '*'
+      Roles:
+        - !Ref IAMRole
+
+
+
+
+
