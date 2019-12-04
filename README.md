@@ -1,14 +1,17 @@
 # AWS CloudFormation templates
 
 ## 1. Bastion Host
-####Description:
+
+#### Description:
 CloudFormation template to deploy bastion host instance.
-####Resource List:
+
+#### Resource List:
 - IAM Role
 - Policy
 - SSH Security group
 - Launch Configuration
 - Auto Scaling Group
 - Elastic IP
-####Path:
+
+#### Path:
 `bastion/bastion.yaml`
